@@ -3569,6 +3569,42 @@ impl Context for RenderContext {
     }
 }
 
+#[derive(Debug)]
+pub struct ThinHandle {
+    window: *mut GLFWwindow
+}
+
+impl ThinHandle {
+
+    pub unsafe fn new(window: *mut GLFWwindow) -> Self {
+        Self {
+            window,
+        }
+    }
+
+}
+
+impl Context for ThinHandle {
+    fn window_ptr(&self) -> *mut GLFWwindow {
+        self.window
+    }
+}
+
+#[cfg(feature = "raw-window-handle-v0-6")]
+impl HasDisplayHandle for ThinHandle {
+    fn display_handle(&'_ self) -> Result<DisplayHandle<'_>, HandleError> {
+        Ok(unsafe { DisplayHandle::borrow_raw(raw_display_handle()) })
+    }
+}
+
+#[cfg(feature = "raw-window-handle-v0-6")]
+impl HasWindowHandle for ThinHandle {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        Ok(unsafe { WindowHandle::borrow_raw(raw_window_handle(self)) })
+    }
+}
+
+
 #[cfg(feature = "raw-window-handle-v0-6")]
 impl HasWindowHandle for Window {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {

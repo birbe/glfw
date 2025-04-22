@@ -3584,6 +3584,10 @@ impl ThinHandle {
 
 }
 
+unsafe impl Send for ThinHandle {}
+
+unsafe impl Sync for ThinHandle {}
+
 impl Context for ThinHandle {
     fn window_ptr(&self) -> *mut GLFWwindow {
         self.window

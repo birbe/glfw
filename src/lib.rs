@@ -3682,7 +3682,7 @@ fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*
             winapi::um::libloaderapi::GetModuleHandleExW(
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                 std::ptr::null(),
-                &mut hinstance as *mut *mut c_void
+                std::mem::transmute(&mut hinstance)
             );
 
             (hwnd, hinstance as _)

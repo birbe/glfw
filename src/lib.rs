@@ -252,7 +252,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::{error, fmt, mem, ptr, slice};
-
+use std::num::NonZeroIsize;
 #[cfg(feature = "vulkan")]
 use ash::vk;
 #[cfg(feature = "raw-window-handle-v0-6")]
@@ -264,7 +264,6 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use winapi::um::libloaderapi::{GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 /// Alias to `MouseButton1`, supplied for improved clarity.
 pub use self::MouseButton::Button1 as MouseButtonLeft;
 /// Alias to `MouseButton2`, supplied for improved clarity.
@@ -3671,26 +3670,16 @@ unsafe impl HasRawDisplayHandle for RenderContext {
 fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> RawWindowHandle {
     #[cfg(target_family = "windows")]
     {
-        use std::num::NonZeroIsize;
-
         use raw_window_handle::Win32WindowHandle;
-        let (hwnd, hinstance): (*mut std::ffi::c_void, *mut std::ffi::c_void) = unsafe {
+        let (hwnd, hinstance) = unsafe {
             let hwnd = ptr(context.window_ptr());
 
-            let mut hinstance: *mut c_void = null_mut();
+            let hinstance: isize = winapi::um::winuser::GetWindowLongPtrA(hwnd as _, winapi::um::winuser::GWLP_HINSTANCE);
 
-            winapi::um::libloaderapi::GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                std::ptr::null(),
-                std::mem::transmute(&mut hinstance)
-            );
-
-            dbg!(hinstance);
-
-            (hwnd, hinstance as _)
+            (hwnd, hinstance)
         };
         let mut handle = Win32WindowHandle::new(NonZeroIsize::new(hwnd as isize).unwrap());
-        handle.hinstance = NonZeroIsize::new(hinstance as isize);
+        handle.hinstance = NonZeroIsize::new(hinstance);
         RawWindowHandle::Win32(handle)
     }
     #[cfg(all(

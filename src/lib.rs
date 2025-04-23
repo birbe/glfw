@@ -3685,6 +3685,8 @@ fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*
                 std::mem::transmute(&mut hinstance)
             );
 
+            dbg!(hinstance);
+
             (hwnd, hinstance as _)
         };
         let mut handle = Win32WindowHandle::new(NonZeroIsize::new(hwnd as isize).unwrap());

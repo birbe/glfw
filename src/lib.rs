@@ -252,7 +252,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::{error, fmt, mem, ptr, slice};
-
+use std::num::NonZeroIsize;
 #[cfg(feature = "vulkan")]
 use ash::vk;
 #[cfg(feature = "raw-window-handle-v0-6")]
@@ -264,7 +264,6 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
 /// Alias to `MouseButton1`, supplied for improved clarity.
 pub use self::MouseButton::Button1 as MouseButtonLeft;
 /// Alias to `MouseButton2`, supplied for improved clarity.
@@ -3569,6 +3568,48 @@ impl Context for RenderContext {
     }
 }
 
+#[derive(Debug)]
+pub struct ThinHandle {
+    window: *mut GLFWwindow,
+    get_window: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void
+}
+
+impl ThinHandle {
+
+    pub unsafe fn new(window: *mut GLFWwindow, get_window: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> Self {
+        Self {
+            window,
+            get_window,
+        }
+    }
+
+}
+
+unsafe impl Send for ThinHandle {}
+
+unsafe impl Sync for ThinHandle {}
+
+impl Context for ThinHandle {
+    fn window_ptr(&self) -> *mut GLFWwindow {
+        self.window
+    }
+}
+
+#[cfg(feature = "raw-window-handle-v0-6")]
+impl HasDisplayHandle for ThinHandle {
+    fn display_handle(&'_ self) -> Result<DisplayHandle<'_>, HandleError> {
+        Ok(unsafe { DisplayHandle::borrow_raw(raw_display_handle()) })
+    }
+}
+
+#[cfg(feature = "raw-window-handle-v0-6")]
+impl HasWindowHandle for ThinHandle {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        Ok(unsafe { WindowHandle::borrow_raw(raw_window_handle_custom(self, self.get_window)) })
+    }
+}
+
+
 #[cfg(feature = "raw-window-handle-v0-6")]
 impl HasWindowHandle for Window {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -3622,6 +3663,73 @@ unsafe impl HasRawDisplayHandle for Window {
 unsafe impl HasRawDisplayHandle for RenderContext {
     fn raw_display_handle(&self) -> RawDisplayHandle {
         raw_display_handle()
+    }
+}
+
+#[cfg(feature = "raw-window-handle-v0-6")]
+fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> RawWindowHandle {
+    #[cfg(target_family = "windows")]
+    {
+        use raw_window_handle::Win32WindowHandle;
+        let (hwnd, hinstance) = unsafe {
+            let hwnd = ptr(context.window_ptr());
+
+            let hinstance: isize = winapi::um::winuser::GetWindowLongPtrA(hwnd as _, winapi::um::winuser::GWLP_HINSTANCE);
+
+            (hwnd, hinstance)
+        };
+        let mut handle = Win32WindowHandle::new(NonZeroIsize::new(hwnd as isize).unwrap());
+        handle.hinstance = NonZeroIsize::new(hinstance);
+        RawWindowHandle::Win32(handle)
+    }
+    #[cfg(all(
+        any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly"),
+        not(feature = "wayland")
+    ))]
+    {
+        use raw_window_handle::XlibWindowHandle;
+        let window =
+            unsafe { ffi::glfwGetX11Window(context.window_ptr()) as std::os::raw::c_ulong };
+        RawWindowHandle::Xlib(XlibWindowHandle::new(window))
+    }
+    #[cfg(all(
+        any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly"),
+        feature = "wayland"
+    ))]
+    {
+        use std::ptr::NonNull;
+
+        use raw_window_handle::WaylandWindowHandle;
+        let surface = unsafe { ffi::glfwGetWaylandWindow(context.window_ptr()) };
+        let handle = WaylandWindowHandle::new(
+            NonNull::new(surface).expect("wayland window surface is null"),
+        );
+        RawWindowHandle::Wayland(handle)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::ptr::NonNull;
+
+        use objc2::msg_send_id;
+        use objc2::rc::Id;
+        use objc2::runtime::NSObject;
+        use raw_window_handle::AppKitWindowHandle;
+        let ns_window: *mut NSObject =
+            unsafe { ffi::glfwGetCocoaWindow(context.window_ptr()) as *mut _ };
+        let ns_view: Option<Id<NSObject>> = unsafe { msg_send_id![ns_window, contentView] };
+        let ns_view = ns_view.expect("failed to access contentView on GLFW NSWindow");
+        let ns_view: NonNull<NSObject> = NonNull::from(&*ns_view);
+        let handle = AppKitWindowHandle::new(ns_view.cast());
+        RawWindowHandle::AppKit(handle)
+    }
+    #[cfg(target_os = "emscripten")]
+    {
+        let _ = context; // to avoid unused lint
+        let mut wh = raw_window_handle::WebWindowHandle::new(1);
+        // glfw on emscripten only supports a single window. so, just hardcode it
+        // sdl2 crate does the same. users can just add `data-raw-handle="1"` attribute to their
+        // canvas element
+        RawWindowHandle::Web(wh)
     }
 }
 

@@ -19,7 +19,7 @@ raw-window-handle-0-6 = { package = "raw-window-handle", version = "0.6.0", opti
 objc2 = "0.5.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3", features = ["libloaderapi"] }
+winapi = { version = "0.3", features = ["libloaderapi", "winuser"] }
 
 [dependencies.glfw-sys]
 optional = true

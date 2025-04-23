@@ -3676,6 +3676,7 @@ fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*
         use raw_window_handle::Win32WindowHandle;
         let (hwnd, hinstance): (*mut std::ffi::c_void, *mut std::ffi::c_void) = unsafe {
             let hwnd = ptr(context.window_ptr());
+            dbg!(hwnd);
             let hinstance: *mut c_void =
                 winapi::um::libloaderapi::GetModuleHandleW(std::ptr::null()) as _;
             (hwnd, hinstance as _)

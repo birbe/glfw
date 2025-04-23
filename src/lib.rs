@@ -264,7 +264,7 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
+use winapi::um::libloaderapi::{GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
 /// Alias to `MouseButton1`, supplied for improved clarity.
 pub use self::MouseButton::Button1 as MouseButtonLeft;
 /// Alias to `MouseButton2`, supplied for improved clarity.
@@ -3677,12 +3677,18 @@ fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*
         let (hwnd, hinstance): (*mut std::ffi::c_void, *mut std::ffi::c_void) = unsafe {
             let hwnd = ptr(context.window_ptr());
 
-            let hinstance: *mut c_void =
-                winapi::um::libloaderapi::GetModuleHandleW(std::ptr::null()) as _;
+            let mut hinstance: *mut c_void = null_mut();
+
+            winapi::um::libloaderapi::GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                std::ptr::null(),
+                &mut hinstance as *mut *mut c_void
+            );
+
             (hwnd, hinstance as _)
         };
         let mut handle = Win32WindowHandle::new(NonZeroIsize::new(hwnd as isize).unwrap());
-        handle.hinstance = None;
+        handle.hinstance = NonZeroIsize::new(hinstance as isize);
         RawWindowHandle::Win32(handle)
     }
     #[cfg(all(

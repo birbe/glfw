@@ -252,7 +252,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::{error, fmt, mem, ptr, slice};
-use std::num::NonZeroIsize;
 #[cfg(feature = "vulkan")]
 use ash::vk;
 #[cfg(feature = "raw-window-handle-v0-6")]
@@ -3571,12 +3570,12 @@ impl Context for RenderContext {
 #[derive(Debug)]
 pub struct ThinHandle {
     window: *mut GLFWwindow,
-    get_window: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void
+    get_window: *const unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void
 }
 
 impl ThinHandle {
 
-    pub unsafe fn new(window: *mut GLFWwindow, get_window: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> Self {
+    pub unsafe fn new(window: *mut GLFWwindow, get_window: *const unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> Self {
         Self {
             window,
             get_window,
@@ -3667,12 +3666,12 @@ unsafe impl HasRawDisplayHandle for RenderContext {
 }
 
 #[cfg(feature = "raw-window-handle-v0-6")]
-fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> RawWindowHandle {
+fn raw_window_handle_custom<C: Context>(context: &C, ptr: *const unsafe extern "C" fn(*mut GLFWwindow) -> *mut c_void) -> RawWindowHandle {
     #[cfg(target_family = "windows")]
     {
         use raw_window_handle::Win32WindowHandle;
         let (hwnd, hinstance) = unsafe {
-            let hwnd = ptr(context.window_ptr());
+            let hwnd = unsafe { (*ptr)(context.window_ptr()) };
 
             let hinstance: isize = winapi::um::winuser::GetWindowLongPtrA(hwnd as _, winapi::um::winuser::GWLP_HINSTANCE);
 
@@ -3715,7 +3714,7 @@ fn raw_window_handle_custom<C: Context>(context: &C, ptr: unsafe extern "C" fn(*
         use objc2::runtime::NSObject;
         use raw_window_handle::AppKitWindowHandle;
         let ns_window: *mut NSObject =
-            unsafe { ffi::glfwGetCocoaWindow(context.window_ptr()) as *mut _ };
+            unsafe { (*ptr)(context.window_ptr()) as *mut _ };
         let ns_view: Option<Id<NSObject>> = unsafe { msg_send_id![ns_window, contentView] };
         let ns_view = ns_view.expect("failed to access contentView on GLFW NSWindow");
         let ns_view: NonNull<NSObject> = NonNull::from(&*ns_view);
